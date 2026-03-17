@@ -39,6 +39,45 @@ public class AuthController : ControllerBase
 
         return Ok(new { token = new JwtSecurityTokenHandler().WriteToken(token) });
     }
+    [HttpPost("register")]
+    public IActionResult Register([FromBody] RegisterRequest request)
+    {
+        // 1. Kiểm tra xem Username đã tồn tại chưa
+        if (_context.Users.Any(u => u.Username == request.Username))
+        {
+            return BadRequest(new { message = "Tài khoản này đã tồn tại!" });
+        }
+
+        // 2. Tạo User mới
+        var newUser = new Models.User 
+        { 
+            Username = request.Username, 
+            Password = request.Password // Lưu ý: Thực tế phải dùng BCrypt để mã hóa mật khẩu
+        };
+        
+        _context.Users.Add(newUser);
+        _context.SaveChanges(); // Lưu vào DB để lấy ID
+
+        // 3. Gán quyền sở hữu mạch Pico cho User này luôn
+        var userDevice = new Models.UserDevice
+        {
+            UserId = newUser.Id,
+            MacAddress = request.MacAddress
+        };
+        
+        _context.UserDevices.Add(userDevice);
+        _context.SaveChanges();
+
+        return Ok(new { message = "Đăng ký thành công và đã gán thiết bị!", userId = newUser.Id });
+    }
+}
+
+// Thêm class này ở cuối file (dưới LoginRequest)
+public class RegisterRequest
+{
+    public string Username { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string MacAddress { get; set; } = string.Empty; // Mạch Pico bạn muốn sở hữu
 }
 
 public class LoginRequest
