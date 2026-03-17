@@ -10,8 +10,9 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. Cấu hình Database SQLite
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=smarthome.db"));
+    options.UseNpgsql(connectionString));
 
 // 2. Cấu hình JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
