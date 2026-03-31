@@ -8,14 +8,14 @@ services:
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: mysecretpassword # Nhớ đổi mật khẩu này nếu muốn
+      POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_DB: SmartHomeDb
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2. Giao diện Web để quản lý PostgreSQL (Thay thế DB Browser)
+  # 2. Giao diện Web để quản lý PostgreSQL
   pgadmin:
     image: dpage/pgadmin4
     container_name: smarthome_pgadmin
@@ -35,7 +35,7 @@ services:
     restart: always
     ports:
       - "1883:1883"
-      - "9001:9001" # Cổng cho WebSockets (nếu sau này cần)
+      - "9001:9001"
     volumes:
       - ./mosquitto_config/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - mosquitto_data:/mosquitto/data
