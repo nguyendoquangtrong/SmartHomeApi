@@ -46,11 +46,11 @@ public class MqttService : IHostedService, IMqttService
                 var root = jsonDoc.RootElement;
 
                 var statusEntry = DeviceCache.GetOrAdd(mac, new Device { MacAddress = mac });
-                
+
                 if (root.TryGetProperty("status", out var s)) statusEntry.Status = s.GetString() ?? "UNKNOWN";
                 if (root.TryGetProperty("ip", out var i)) statusEntry.IpAddress = i.GetString() ?? "0.0.0.0";
                 if (root.TryGetProperty("speed", out var sp)) statusEntry.Speed = sp.GetInt32();
-                
+
                 // Đọc nhãn nguồn gốc của thao tác (từ Pico gửi lên)
                 string source = "unknown";
                 if (root.TryGetProperty("source", out var src)) source = src.GetString() ?? "unknown";
@@ -60,48 +60,54 @@ public class MqttService : IHostedService, IMqttService
                 // ========================================================
                 // DÙNG TRY-CATCH ĐỂ BẢO VỆ LUỒNG SIGNALR KHÔNG BỊ CRASH
                 // ========================================================
-                try 
+                try
                 {
                     using (var scope = _scopeFactory.CreateScope())
                     {
                         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                         var deviceInDb = await dbContext.Devices.FindAsync(mac);
-                        
+
                         if (deviceInDb == null)
                         {
                             dbContext.Devices.Add(statusEntry);
                         }
                         else
                         {
-                            // CHỈ BÁO CÁO VÀ LƯU LỊCH SỬ NẾU PICO BÁO LÀ VẶN BẰNG TAY
-                            if (source == "manual" && deviceInDb.Speed != statusEntry.Speed && statusEntry.Status == "RUNNING")
+                            // 1. ĐỒNG BỘ DỮ LIỆU TỪ DB RA CACHE ĐỂ KHÔNG BỊ OWNER_ID = 0
+                            statusEntry.OwnerId = deviceInDb.OwnerId;
+                            statusEntry.DeviceName = deviceInDb.DeviceName;
+
+                            // 2. KIỂM TRA LỊCH SỬ NẾU VẶN TAY
+                            if (source == "manual" && deviceInDb.Speed != statusEntry.Speed &&
+                                statusEntry.Status == "RUNNING")
                             {
-                                // Ghi lịch sử vào Database
-                                dbContext.DeviceHistories.Add(new DeviceHistory {
+                                dbContext.DeviceHistories.Add(new DeviceHistory
+                                {
                                     MacAddress = mac,
                                     Action = "MANUAL_ADJUST",
                                     Value = statusEntry.Speed,
-                                    TriggeredBy = "Điều chỉnh trực tiếp tại mạch", 
+                                    TriggeredBy = "Điều chỉnh trực tiếp tại mạch",
                                     Timestamp = DateTime.UtcNow
                                 });
 
-                                // Bắn thông báo Real-time 
-                                var notifMsg = new {
+                                var notifMsg = new
+                                {
                                     type = "HARDWARE_ACTION",
-                                    message = $"Cảnh báo: Quạt '{deviceInDb.DeviceName}' vừa bị vặn tay vật lý thành {statusEntry.Speed}%",
+                                    message =
+                                        $"Cảnh báo: Quạt '{deviceInDb.DeviceName}' vừa bị vặn tay vật lý thành {statusEntry.Speed}%",
                                     time = DateTime.UtcNow
                                 };
                                 await _hubContext.Clients.All.SendAsync("ReceiveNotification", notifMsg);
                             }
 
-                            // Cập nhật trạng thái thiết bị
+                            // 3. CẬP NHẬT DB
                             deviceInDb.Status = statusEntry.Status;
                             deviceInDb.Speed = statusEntry.Speed;
                             deviceInDb.IpAddress = statusEntry.IpAddress;
                             deviceInDb.LastUpdate = statusEntry.LastUpdate;
                         }
-                        // Nếu DB chưa có bảng DeviceHistories, đoạn này sẽ ném lỗi văng xuống block catch
-                        await dbContext.SaveChangesAsync(); 
+
+                        await dbContext.SaveChangesAsync();
                     }
                 }
                 catch (Exception ex)
@@ -109,9 +115,7 @@ public class MqttService : IHostedService, IMqttService
                     Console.WriteLine($"[LỖI DATABASE] Không thể cập nhật dữ liệu: {ex.Message}");
                 }
 
-                // ========================================================
-                // BƯỚC NÀY NẰM NGOÀI TRY-CATCH NÊN SẼ LUÔN LUÔN ĐƯỢC CHẠY
-                // ========================================================
+                // LÚC NÀY STATUS_ENTRY ĐÃ CÓ ĐẦY ĐỦ OWNER_ID = 1 CHỨ KHÔNG PHẢI 0 NỮA
                 await _hubContext.Clients.All.SendAsync("ReceiveDeviceStatus", statusEntry);
             }
         };
