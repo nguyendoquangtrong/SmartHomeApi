@@ -7,10 +7,13 @@ EXPOSE 8081
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["SmartHomeApi/SmartHomeApi.csproj", "SmartHomeApi/"]
-RUN dotnet restore "SmartHomeApi/SmartHomeApi.csproj"
+
+# Đã sửa lại đường dẫn (bỏ tiền tố SmartHomeApi/)
+COPY ["SmartHomeApi.csproj", "./"]
+RUN dotnet restore "./SmartHomeApi.csproj"
 COPY . .
-WORKDIR "/src/SmartHomeApi"
+
+# Xóa dòng chuyển Workdir vì hiện tại đã đứng đúng chỗ
 RUN dotnet build "./SmartHomeApi.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
