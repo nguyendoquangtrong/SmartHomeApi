@@ -46,56 +46,73 @@ public class MqttService : IHostedService, IMqttService
                 var root = jsonDoc.RootElement;
 
                 var statusEntry = DeviceCache.GetOrAdd(mac, new Device { MacAddress = mac });
-
+                
                 if (root.TryGetProperty("status", out var s)) statusEntry.Status = s.GetString() ?? "UNKNOWN";
                 if (root.TryGetProperty("ip", out var i)) statusEntry.IpAddress = i.GetString() ?? "0.0.0.0";
                 if (root.TryGetProperty("speed", out var sp)) statusEntry.Speed = sp.GetInt32();
+                
+                // Đọc nhãn nguồn gốc của thao tác (từ Pico gửi lên)
+                string source = "unknown";
+                if (root.TryGetProperty("source", out var src)) source = src.GetString() ?? "unknown";
+
                 statusEntry.LastUpdate = DateTime.UtcNow;
 
-                using (var scope = _scopeFactory.CreateScope())
+                // ========================================================
+                // DÙNG TRY-CATCH ĐỂ BẢO VỆ LUỒNG SIGNALR KHÔNG BỊ CRASH
+                // ========================================================
+                try 
                 {
-                    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                    var deviceInDb = await dbContext.Devices.FindAsync(mac);
-
-                    if (deviceInDb == null)
+                    using (var scope = _scopeFactory.CreateScope())
                     {
-                        dbContext.Devices.Add(statusEntry);
-                    }
-                    else
-                    {
-                        // PHÁT HIỆN SỰ THAY ĐỔI TỐC ĐỘ TỪ THIẾT BỊ VẬT LÝ
-                        if (deviceInDb.Speed != statusEntry.Speed && statusEntry.Status == "RUNNING")
+                        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                        var deviceInDb = await dbContext.Devices.FindAsync(mac);
+                        
+                        if (deviceInDb == null)
                         {
-                            // Ghi lịch sử
-                            dbContext.DeviceHistories.Add(new DeviceHistory
-                            {
-                                MacAddress = mac,
-                                Action = "MANUAL_ADJUST",
-                                Value = statusEntry.Speed,
-                                TriggeredBy = "Điều chỉnh trực tiếp tại mạch", // Tag nhận diện vặn tay
-                                Timestamp = DateTime.UtcNow
-                            });
-
-                            // Bắn thông báo Real-time 
-                            var notifMsg = new
-                            {
-                                type = "HARDWARE_ACTION",
-                                message =
-                                    $"Cảnh báo: Quạt '{deviceInDb.DeviceName}' vừa bị vặn tay vật lý thành {statusEntry.Speed}%",
-                                time = DateTime.UtcNow
-                            };
-                            await _hubContext.Clients.All.SendAsync("ReceiveNotification", notifMsg);
+                            dbContext.Devices.Add(statusEntry);
                         }
+                        else
+                        {
+                            // CHỈ BÁO CÁO VÀ LƯU LỊCH SỬ NẾU PICO BÁO LÀ VẶN BẰNG TAY
+                            if (source == "manual" && deviceInDb.Speed != statusEntry.Speed && statusEntry.Status == "RUNNING")
+                            {
+                                // Ghi lịch sử vào Database
+                                dbContext.DeviceHistories.Add(new DeviceHistory {
+                                    MacAddress = mac,
+                                    Action = "MANUAL_ADJUST",
+                                    Value = statusEntry.Speed,
+                                    TriggeredBy = "Điều chỉnh trực tiếp tại mạch", 
+                                    Timestamp = DateTime.UtcNow
+                                });
 
-                        // Cập nhật Database
-                        deviceInDb.Status = statusEntry.Status;
-                        deviceInDb.Speed = statusEntry.Speed;
-                        deviceInDb.IpAddress = statusEntry.IpAddress;
-                        deviceInDb.LastUpdate = statusEntry.LastUpdate;
+                                // Bắn thông báo Real-time 
+                                var notifMsg = new {
+                                    type = "HARDWARE_ACTION",
+                                    message = $"Cảnh báo: Quạt '{deviceInDb.DeviceName}' vừa bị vặn tay vật lý thành {statusEntry.Speed}%",
+                                    time = DateTime.UtcNow
+                                };
+                                await _hubContext.Clients.All.SendAsync("ReceiveNotification", notifMsg);
+                            }
+
+                            // Cập nhật trạng thái thiết bị
+                            deviceInDb.Status = statusEntry.Status;
+                            deviceInDb.Speed = statusEntry.Speed;
+                            deviceInDb.IpAddress = statusEntry.IpAddress;
+                            deviceInDb.LastUpdate = statusEntry.LastUpdate;
+                        }
+                        // Nếu DB chưa có bảng DeviceHistories, đoạn này sẽ ném lỗi văng xuống block catch
+                        await dbContext.SaveChangesAsync(); 
                     }
-
-                    await dbContext.SaveChangesAsync();
                 }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[LỖI DATABASE] Không thể cập nhật dữ liệu: {ex.Message}");
+                }
+
+                // ========================================================
+                // BƯỚC NÀY NẰM NGOÀI TRY-CATCH NÊN SẼ LUÔN LUÔN ĐƯỢC CHẠY
+                // ========================================================
+                await _hubContext.Clients.All.SendAsync("ReceiveDeviceStatus", statusEntry);
             }
         };
     }
