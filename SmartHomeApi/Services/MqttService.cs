@@ -28,7 +28,7 @@ public class MqttService : IHostedService, IMqttService
         _mqttOptions = new MqttClientOptionsBuilder()
             .WithClientId("CSharp_Backend_Server_" + Guid.NewGuid().ToString())
             .WithTcpServer("4a6480af0e0d4d2f8f617239026d13f1.s1.eu.hivemq.cloud", 8883) 
-            .WithCredentials("admin_smarthome", "MatKhauKho123!") 
+            .WithCredentials("admin_smarthome", "MatKhauKho123") 
             .WithTls() 
             .WithCleanSession()
             .Build();
