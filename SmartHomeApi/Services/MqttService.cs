@@ -55,6 +55,12 @@ public class MqttService : IHostedService, IMqttService
                 string source = "unknown";
                 if (root.TryGetProperty("source", out var src)) source = src.GetString() ?? "unknown";
 
+                // ========================================================
+                // MỚI: ĐỌC MẬT KHẨU GHÉP NỐI (DEVICE PIN) TỪ MẠCH PICO
+                // ========================================================
+                if (root.TryGetProperty("password", out var pwd)) 
+                    statusEntry.DevicePassword = pwd.GetString() ?? "";
+
                 statusEntry.LastUpdate = DateTime.UtcNow;
 
                 // ========================================================
@@ -69,18 +75,25 @@ public class MqttService : IHostedService, IMqttService
 
                         if (deviceInDb == null)
                         {
+                            // Mạch mới tinh -> Lưu vào DB kèm theo mật khẩu luôn
                             dbContext.Devices.Add(statusEntry);
                         }
                         else
                         {
-                            // 1. ĐỒNG BỘ DỮ LIỆU TỪ DB RA CACHE ĐỂ KHÔNG BỊ OWNER_ID = 0
+                            // 0. CẬP NHẬT MẬT KHẨU NẾU MẠCH ĐỔI MẬT KHẨU MỚI
+                            if (!string.IsNullOrEmpty(statusEntry.DevicePassword)) 
+                            {
+                                deviceInDb.DevicePassword = statusEntry.DevicePassword;
+                            }
+
+                            // 1. ĐỒNG BỘ DỮ LIỆU TỪ DB RA CACHE ĐỂ KHÔNG BỊ LỖI OWNER_ID = 0 VÀ LƯU LẠI MẬT KHẨU VÀO CACHE
                             statusEntry.OwnerId = deviceInDb.OwnerId;
                             statusEntry.DeviceName = deviceInDb.DeviceName;
+                            statusEntry.DevicePassword = deviceInDb.DevicePassword;
 
-                            // 2. KIỂM TRA LỊCH SỬ NẾU VẶN TAY (Đã sửa lỗi không báo khi về 0)
+                            // 2. KIỂM TRA LỊCH SỬ NẾU VẶN TAY
                             if (source == "manual" && deviceInDb.Speed != statusEntry.Speed)
                             {
-                                // Tạo câu thông báo thông minh hơn
                                 string actionText = statusEntry.Speed == 0 
                                     ? "bị vặn tay để TẮT" 
                                     : $"bị vặn tay vật lý thành {statusEntry.Speed}%";
@@ -116,7 +129,6 @@ public class MqttService : IHostedService, IMqttService
                     Console.WriteLine($"[LỖI DATABASE] Không thể cập nhật dữ liệu: {ex.Message}");
                 }
 
-                // LÚC NÀY STATUS_ENTRY ĐÃ CÓ ĐẦY ĐỦ OWNER_ID = 1 CHỨ KHÔNG PHẢI 0 NỮA
                 await _hubContext.Clients.All.SendAsync("ReceiveDeviceStatus", statusEntry);
             }
         };
