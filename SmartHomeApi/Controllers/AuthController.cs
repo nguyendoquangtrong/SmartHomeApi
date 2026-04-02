@@ -94,6 +94,28 @@ public class AuthController : ControllerBase
             role = "User" 
         });
     }
+    // 1. Định nghĩa dữ liệu đầu vào
+    public class UpdateTokenRequest
+    {
+        public string PushToken { get; set; } = string.Empty;
+    }
+
+    // 2. API Nhận và lưu Push Token
+    [Microsoft.AspNetCore.Authorization.Authorize]
+    [HttpPost("update-push-token")]
+    public async Task<IActionResult> UpdatePushToken([FromBody] UpdateTokenRequest request)
+    {
+        var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var user = _context.Users.Find(userId);
+        
+        if (user == null) return NotFound();
+
+        // Lưu hoặc cập nhật Token mới nhất của thiết bị
+        user.PushToken = request.PushToken;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Cập nhật Push Token thành công!" });
+    }
 }
 
 // Thêm class này ở cuối file (dưới LoginRequest)

@@ -55,17 +55,13 @@ public class MqttService : IHostedService, IMqttService
                 string source = "unknown";
                 if (root.TryGetProperty("source", out var src)) source = src.GetString() ?? "unknown";
 
-                // ========================================================
-                // MỚI: ĐỌC MẬT KHẨU GHÉP NỐI (DEVICE PIN) TỪ MẠCH PICO
-                // ========================================================
+                // ĐỌC MẬT KHẨU GHÉP NỐI (DEVICE PIN) TỪ MẠCH PICO
                 if (root.TryGetProperty("password", out var pwd)) 
                     statusEntry.DevicePassword = pwd.GetString() ?? "";
 
                 statusEntry.LastUpdate = DateTime.UtcNow;
 
-                // ========================================================
                 // DÙNG TRY-CATCH ĐỂ BẢO VỆ LUỒNG SIGNALR KHÔNG BỊ CRASH
-                // ========================================================
                 try
                 {
                     using (var scope = _scopeFactory.CreateScope())
@@ -91,7 +87,7 @@ public class MqttService : IHostedService, IMqttService
                             statusEntry.DeviceName = deviceInDb.DeviceName;
                             statusEntry.DevicePassword = deviceInDb.DevicePassword;
 
-                            // 2. KIỂM TRA LỊCH SỬ NẾU VẶN TAY
+                            // 2. KIỂM TRA LỊCH SỬ NẾU VẶN TAY VÀ BẮN PUSH NOTIFICATION
                             if (source == "manual" && deviceInDb.Speed != statusEntry.Speed)
                             {
                                 string actionText = statusEntry.Speed == 0 
@@ -111,7 +107,22 @@ public class MqttService : IHostedService, IMqttService
                                     message = $"Cảnh báo: Quạt '{deviceInDb.DeviceName}' vừa {actionText}",
                                     time = DateTime.UtcNow
                                 };
+                                
+                                // Gửi qua WebSocket (App đang mở)
                                 await _hubContext.Clients.All.SendAsync("ReceiveNotification", notifMsg);
+
+                                // ========================================================
+                                // GỌI HÀM BẮN PUSH NOTIFICATION (APP ĐANG TẮT)
+                                // ========================================================
+                                var owner = await dbContext.Users.FindAsync(deviceInDb.OwnerId);
+                                if (owner != null && !string.IsNullOrEmpty(owner.PushToken))
+                                {
+                                    await SendExpoPushNotification(
+                                        owner.PushToken, 
+                                        "Cảnh báo phần cứng 🛠️", 
+                                        notifMsg.message
+                                    );
+                                }
                             }
 
                             // 3. CẬP NHẬT DB
@@ -160,5 +171,30 @@ public class MqttService : IHostedService, IMqttService
             .Build();
 
         await _mqttClient.PublishAsync(message);
+    }
+
+    // HÀM BẮN THÔNG BÁO QUA EXPO PUSH SERVER
+    private async Task SendExpoPushNotification(string expoPushToken, string title, string body)
+    {
+        if (string.IsNullOrEmpty(expoPushToken)) return;
+
+        try
+        {
+            using var client = new HttpClient();
+            var message = new
+            {
+                to = expoPushToken,
+                sound = "default",
+                title = title,
+                body = body
+            };
+
+            await client.PostAsJsonAsync("https://exp.host/--/api/v2/push/send", message);
+            Console.WriteLine($"[PUSH] Đã bắn thông báo tới: {expoPushToken}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PUSH ERROR] Lỗi bắn thông báo: {ex.Message}");
+        }
     }
 }
