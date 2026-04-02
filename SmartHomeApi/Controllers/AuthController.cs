@@ -76,6 +76,24 @@ public class AuthController : ControllerBase
 
         return Ok(new { message = "Đăng ký thành công và đã gán thiết bị!", userId = newUser.Id });
     }
+    [Microsoft.AspNetCore.Authorization.Authorize]
+    [HttpGet("profile")]
+    public IActionResult GetProfile()
+    {
+        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userIdString)) return Unauthorized();
+        
+        var userId = int.Parse(userIdString);
+        var user = _context.Users.Find(userId);
+        
+        if (user == null) return NotFound();
+        
+        return Ok(new { 
+            id = user.Id, 
+            username = user.Username,
+            role = "User" 
+        });
+    }
 }
 
 // Thêm class này ở cuối file (dưới LoginRequest)

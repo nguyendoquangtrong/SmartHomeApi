@@ -46,7 +46,7 @@ public class MqttService : IHostedService, IMqttService
                 var root = jsonDoc.RootElement;
 
                 var statusEntry = DeviceCache.GetOrAdd(mac, new Device { MacAddress = mac });
-                
+
                 if (root.TryGetProperty("status", out var s)) statusEntry.Status = s.GetString() ?? "UNKNOWN";
                 if (root.TryGetProperty("ip", out var i)) statusEntry.IpAddress = i.GetString() ?? "0.0.0.0";
                 if (root.TryGetProperty("speed", out var sp)) statusEntry.Speed = sp.GetInt32();
@@ -56,21 +56,46 @@ public class MqttService : IHostedService, IMqttService
                 {
                     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                     var deviceInDb = await dbContext.Devices.FindAsync(mac);
+
                     if (deviceInDb == null)
                     {
-                        dbContext.Devices.Add(statusEntry); // Lúc này OwnerId mặc định = 0 (Chưa ai sở hữu)
+                        dbContext.Devices.Add(statusEntry);
                     }
                     else
                     {
+                        // PHÁT HIỆN SỰ THAY ĐỔI TỐC ĐỘ TỪ THIẾT BỊ VẬT LÝ
+                        if (deviceInDb.Speed != statusEntry.Speed && statusEntry.Status == "RUNNING")
+                        {
+                            // Ghi lịch sử
+                            dbContext.DeviceHistories.Add(new DeviceHistory
+                            {
+                                MacAddress = mac,
+                                Action = "MANUAL_ADJUST",
+                                Value = statusEntry.Speed,
+                                TriggeredBy = "Điều chỉnh trực tiếp tại mạch", // Tag nhận diện vặn tay
+                                Timestamp = DateTime.UtcNow
+                            });
+
+                            // Bắn thông báo Real-time 
+                            var notifMsg = new
+                            {
+                                type = "HARDWARE_ACTION",
+                                message =
+                                    $"Cảnh báo: Quạt '{deviceInDb.DeviceName}' vừa bị vặn tay vật lý thành {statusEntry.Speed}%",
+                                time = DateTime.UtcNow
+                            };
+                            await _hubContext.Clients.All.SendAsync("ReceiveNotification", notifMsg);
+                        }
+
+                        // Cập nhật Database
                         deviceInDb.Status = statusEntry.Status;
                         deviceInDb.Speed = statusEntry.Speed;
                         deviceInDb.IpAddress = statusEntry.IpAddress;
                         deviceInDb.LastUpdate = statusEntry.LastUpdate;
                     }
+
                     await dbContext.SaveChangesAsync();
                 }
-
-                await _hubContext.Clients.All.SendAsync("ReceiveDeviceStatus", statusEntry);
             }
         };
     }
