@@ -11,12 +11,28 @@ var builder = WebApplication.CreateBuilder(args);
 
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
-// 1. Cấu hình Database SQLite
+// [MỚI] Cấu hình CORS để App/Web gọi được API không bị chặn
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
+// 1. Cấu hình Database
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 // 2. Cấu hình JWT Authentication
+// Lấy Key từ cấu hình, nếu quên set trên Railway thì dùng Key mặc định để không bị Crash 500
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "DayLaMotChuoiKhoaBaoMatRatDaiVaKhoDoan123!@#";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "SmartHomeIssuer";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "SmartHomeAudience";
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -26,9 +42,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
 
         // Hỗ trợ Token cho SignalR (WebSockets)
@@ -58,7 +74,25 @@ builder.Services.AddSingleton<IMqttService>(sp =>
 
 var app = builder.Build();
 
+// ====== TỰ ĐỘNG TẠO BẢNG DATABASE (Khắc phục triệt để lỗi 500) ======
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<SmartHomeApi.Data.AppDbContext>();
+        context.Database.Migrate(); // Tự động chạy tạo bảng khi khởi động
+        Console.WriteLine("Đã đồng bộ cấu trúc Database thành công!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Lỗi khi đồng bộ Database: " + ex.Message);
+    }
+}
+// ====================================================================
+
 // 4. Định tuyến Middleware
+app.UseCors(); // [MỚI] Kích hoạt CORS (Phải nằm trước Auth)
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
