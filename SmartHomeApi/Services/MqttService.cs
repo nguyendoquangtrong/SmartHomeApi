@@ -77,24 +77,25 @@ public class MqttService : IHostedService, IMqttService
                             statusEntry.OwnerId = deviceInDb.OwnerId;
                             statusEntry.DeviceName = deviceInDb.DeviceName;
 
-                            // 2. KIỂM TRA LỊCH SỬ NẾU VẶN TAY
-                            if (source == "manual" && deviceInDb.Speed != statusEntry.Speed &&
-                                statusEntry.Status == "RUNNING")
+                            // 2. KIỂM TRA LỊCH SỬ NẾU VẶN TAY (Đã sửa lỗi không báo khi về 0)
+                            if (source == "manual" && deviceInDb.Speed != statusEntry.Speed)
                             {
-                                dbContext.DeviceHistories.Add(new DeviceHistory
-                                {
+                                // Tạo câu thông báo thông minh hơn
+                                string actionText = statusEntry.Speed == 0 
+                                    ? "bị vặn tay để TẮT" 
+                                    : $"bị vặn tay vật lý thành {statusEntry.Speed}%";
+
+                                dbContext.DeviceHistories.Add(new DeviceHistory {
                                     MacAddress = mac,
                                     Action = "MANUAL_ADJUST",
                                     Value = statusEntry.Speed,
-                                    TriggeredBy = "Điều chỉnh trực tiếp tại mạch",
+                                    TriggeredBy = "Điều chỉnh trực tiếp tại mạch", 
                                     Timestamp = DateTime.UtcNow
                                 });
 
-                                var notifMsg = new
-                                {
+                                var notifMsg = new {
                                     type = "HARDWARE_ACTION",
-                                    message =
-                                        $"Cảnh báo: Quạt '{deviceInDb.DeviceName}' vừa bị vặn tay vật lý thành {statusEntry.Speed}%",
+                                    message = $"Cảnh báo: Quạt '{deviceInDb.DeviceName}' vừa {actionText}",
                                     time = DateTime.UtcNow
                                 };
                                 await _hubContext.Clients.All.SendAsync("ReceiveNotification", notifMsg);
