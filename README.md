@@ -4,8 +4,8 @@ Tài liệu hướng dẫn tích hợp API cho ứng dụng di động (Mobile A
 
 ## 🌐 Môi trường (Environments)
 
-- **Base HTTP URL:** `https://<link-railway-cua-ban>.up.railway.app`
-- **Base WebSocket URL:** `wss://<link-railway-cua-ban>.up.railway.app`
+- **Base HTTP URL:** `https://smarthomeapi-production.up.railway.app/`
+- **Base WebSocket URL:** `wss://smarthomeapi-production.up.railway.app`
 
 ## 🔒 Xác thực (Authentication)
 
