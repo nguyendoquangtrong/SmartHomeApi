@@ -17,8 +17,7 @@ public class MqttService : IHostedService, IMqttService
     private readonly IHubContext<DeviceHub> _hubContext;
     private readonly IServiceScopeFactory _scopeFactory;
 
-    public static ConcurrentDictionary<string, DeviceStatus> DeviceCache = new();
-
+    public static ConcurrentDictionary<string, Device> DeviceCache = new();
     public MqttService(IHubContext<DeviceHub> hubContext, IServiceScopeFactory scopeFactory)
     {
         var factory = new MqttFactory();
@@ -30,6 +29,7 @@ public class MqttService : IHostedService, IMqttService
             .WithClientId("CSharp_Backend_Server")
             .WithTcpServer("127.0.0.1", 1883)
             .WithCleanSession()
+            .WithCredentials("admin", "123456")
             .Build();
 
         _mqttClient.ApplicationMessageReceivedAsync += async e =>
@@ -44,8 +44,8 @@ public class MqttService : IHostedService, IMqttService
                 using var jsonDoc = JsonDocument.Parse(payload);
                 var root = jsonDoc.RootElement;
 
-                var statusEntry = DeviceCache.GetOrAdd(mac, new DeviceStatus { MacAddress = mac });
-
+                var statusEntry = DeviceCache.GetOrAdd(mac, new Device { MacAddress = mac });
+                
                 if (root.TryGetProperty("status", out var s)) statusEntry.Status = s.GetString() ?? "UNKNOWN";
                 if (root.TryGetProperty("ip", out var i)) statusEntry.IpAddress = i.GetString() ?? "0.0.0.0";
                 if (root.TryGetProperty("speed", out var sp)) statusEntry.Speed = sp.GetInt32();
@@ -57,7 +57,7 @@ public class MqttService : IHostedService, IMqttService
                     var deviceInDb = await dbContext.Devices.FindAsync(mac);
                     if (deviceInDb == null)
                     {
-                        dbContext.Devices.Add(statusEntry);
+                        dbContext.Devices.Add(statusEntry); // Lúc này OwnerId mặc định = 0 (Chưa ai sở hữu)
                     }
                     else
                     {

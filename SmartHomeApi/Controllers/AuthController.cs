@@ -29,7 +29,8 @@ public class AuthController : ControllerBase
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[] {
+        var claims = new[]
+        {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username)
         };
@@ -39,34 +40,39 @@ public class AuthController : ControllerBase
 
         return Ok(new { token = new JwtSecurityTokenHandler().WriteToken(token) });
     }
+
     [HttpPost("register")]
     public IActionResult Register([FromBody] RegisterRequest request)
     {
-        // 1. Kiểm tra xem Username đã tồn tại chưa
         if (_context.Users.Any(u => u.Username == request.Username))
-        {
             return BadRequest(new { message = "Tài khoản này đã tồn tại!" });
-        }
 
-        // 2. Tạo User mới
-        var newUser = new Models.User 
-        { 
-            Username = request.Username, 
-            Password = request.Password // Lưu ý: Thực tế phải dùng BCrypt để mã hóa mật khẩu
-        };
-        
+        var newUser = new Models.User { Username = request.Username, Password = request.Password };
         _context.Users.Add(newUser);
-        _context.SaveChanges(); // Lưu vào DB để lấy ID
-
-        // 3. Gán quyền sở hữu mạch Pico cho User này luôn
-        var userDevice = new Models.UserDevice
-        {
-            UserId = newUser.Id,
-            MacAddress = request.MacAddress
-        };
-        
-        _context.UserDevices.Add(userDevice);
         _context.SaveChanges();
+
+        // Xử lý xác nhận chủ sở hữu thiết bị
+        if (!string.IsNullOrEmpty(request.MacAddress))
+        {
+            var device = _context.Devices.FirstOrDefault(d => d.MacAddress == request.MacAddress);
+            if (device == null)
+            {
+                // Mạch chưa từng ping lên MQTT, tạo sẵn chờ nó ping
+                _context.Devices.Add(new Models.Device { MacAddress = request.MacAddress, OwnerId = newUser.Id });
+            }
+            else
+            {
+                // Mạch đã ping lên MQTT, kiểm tra xem đã có chủ chưa
+                if (device.OwnerId == 0) device.OwnerId = newUser.Id;
+                else
+                    return Ok(new
+                    {
+                        message = "Đăng ký thành công, nhưng thiết bị này đã thuộc về người khác!", userId = newUser.Id
+                    });
+            }
+
+            _context.SaveChanges();
+        }
 
         return Ok(new { message = "Đăng ký thành công và đã gán thiết bị!", userId = newUser.Id });
     }

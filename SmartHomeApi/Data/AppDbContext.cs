@@ -7,7 +7,7 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<DeviceStatus> Devices { get; set; }
+    public DbSet<Device> Devices { get; set; }
     public DbSet<User> Users { get; set; }
-    public DbSet<UserDevice> UserDevices { get; set; }
+    public DbSet<DeviceShare> DeviceShares { get; set; }
 }
