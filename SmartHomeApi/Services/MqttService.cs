@@ -26,10 +26,11 @@ public class MqttService : IHostedService, IMqttService
         _scopeFactory = scopeFactory;
 
         _mqttOptions = new MqttClientOptionsBuilder()
-            .WithClientId("CSharp_Backend_Server")
-            .WithTcpServer("127.0.0.1", 1883)
+            .WithClientId("CSharp_Backend_Server_" + Guid.NewGuid().ToString())
+            .WithTcpServer("4a6480af0e0d4d2f8f617239026d13f1.s1.eu.hivemq.cloud", 8883) 
+            .WithCredentials("admin_smarthome", "MatKhauKho123!") 
+            .WithTls() 
             .WithCleanSession()
-            .WithCredentials("admin", "123456")
             .Build();
 
         _mqttClient.ApplicationMessageReceivedAsync += async e =>
