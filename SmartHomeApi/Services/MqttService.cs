@@ -50,7 +50,7 @@ public class MqttService : IHostedService, IMqttService
                 if (root.TryGetProperty("status", out var s)) statusEntry.Status = s.GetString() ?? "UNKNOWN";
                 if (root.TryGetProperty("ip", out var i)) statusEntry.IpAddress = i.GetString() ?? "0.0.0.0";
                 if (root.TryGetProperty("speed", out var sp)) statusEntry.Speed = sp.GetInt32();
-                statusEntry.LastUpdate = DateTime.Now;
+                statusEntry.LastUpdate = DateTime.UtcNow;
 
                 using (var scope = _scopeFactory.CreateScope())
                 {

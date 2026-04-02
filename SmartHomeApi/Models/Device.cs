@@ -12,5 +12,5 @@ public class Device
     public string Status { get; set; } = "OFFLINE";
     public int Speed { get; set; } = 0;
     public string IpAddress { get; set; } = "Unknown";
-    public DateTime LastUpdate { get; set; } = DateTime.Now;
+    public DateTime LastUpdate { get; set; } = DateTime.UtcNow;
 }
